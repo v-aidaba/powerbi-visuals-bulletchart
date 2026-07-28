@@ -172,9 +172,9 @@ const legendPositionOptions: ILocalizedItemMember[] = [
 ];
 
 const gridlinesStyle: ILocalizedItemMember[] = [
-    { value: "dotted", displayNameKey: "Visual_Dotted" },
-    { value: "dashed", displayNameKey: "Visual_Dashed" },
-    { value: 'solid', displayNameKey: "Visual_Solid" },
+    { value: "Dotted", displayNameKey: "Visual_Dotted" },
+    { value: "Dashed", displayNameKey: "Visual_Dashed" },
+    { value: "Solid", displayNameKey: "Visual_Solid" },
 ];
 
 
@@ -226,7 +226,7 @@ class GeneralCard extends Card {
         displayNameKey: "Visual_BarSize",
         value: 25,
         options: {
-            minValue: { value: 0, type: ValidatorType.Min },
+            minValue: { value: 1, type: ValidatorType.Min },
         }
     });
 
@@ -749,7 +749,7 @@ class SyncAxisCard extends CompositeCard {
         name: "transparency",
         displayName: "transparency",
         displayNameKey: "Visual_Transparency",
-        value: 1,
+        value: 0,
         options: {
             minValue: { value: 0, type: ValidatorType.Min },
             maxValue: { value: 100, type: ValidatorType.Max },

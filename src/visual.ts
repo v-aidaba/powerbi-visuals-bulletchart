@@ -161,11 +161,14 @@ export class BulletChart implements IVisual {
     private static SubtitleMargin: number = 10;
     private static SecondTargetLineSize: number = 7;
     private static FontFamily: string = "Segoe UI";
-    private static ratioForLabelHeight: number = 1.4;
-    private static measureUnitShift: number = 12;
-    private static labelHeightReversedPadding: number = 5;
-    private static xAxisVerticalShift: number = 10;
-    private static verticalHeightOffset: number = 25;
+    private static LabelHeightRatio: number = 1.4;
+    private static MeasureUnitVerticalShift: number = 12;
+    private static UnderlineExtraPadding: number = 4;
+    private static ReversedLabelPadding: number = 5;
+    private static VerticalAxisClipPadding: number = 10;
+    private static VerticalViewportReserve: number = 25;
+    private static CompletionPercentLineSpacing: number = 7;
+    private static CompletionPercentVerticalLineSpacing: number = 3;
     private static CategoryPropertyIdentifier = {
         conditionalColor: { objectName: "colors", propertyName: "conditionalColor" },
         fill: { objectName: "colors", propertyName: "fill" }
@@ -437,7 +440,7 @@ export class BulletChart implements IVisual {
             } = BulletChart.computeCategoryNumbers(categoricalValues, idx, this.visualSettings, targetValue, minimumValue, categoryMaxValue, categoryValue, targetValue2);
 
             if (!anyRangeIsDefined) {
-                return;
+                continue;
             }
 
             if (!isNaN(minimum) && !isNaN(needsImprovement) && minimum !== needsImprovement) {
@@ -740,6 +743,7 @@ export class BulletChart implements IVisual {
             targetValues: [],
             viewportLength: 0,
             longestCategoryWidth: longestCategoryWidth,
+            verticalExtraOffset: 0,
         };
 
         const labelsPadding: number = isReversedOrientation ? BulletChart.LabelsPadding : BulletChart.zeroValue;
@@ -748,8 +752,18 @@ export class BulletChart implements IVisual {
             : 0;
 
         bulletModel.labelHeight = (visualSettings.labels.show.value || BulletChart.zeroValue) && Math.ceil(PixelConverter.fromPointToPixel(visualSettings.labels.font.fontSize.value));
-        bulletModel.labelHeightTop = (visualSettings.labels.show.value || BulletChart.zeroValue) && Math.ceil(PixelConverter.fromPointToPixel(visualSettings.labels.font.fontSize.value)) / BulletChart.ratioForLabelHeight;
-        bulletModel.spaceRequiredForBarHorizontally = visualSettings.general.barSize.value + this.SpaceBetweenBarsHorizontally;
+        bulletModel.labelHeightTop = (visualSettings.labels.show.value || BulletChart.zeroValue) && Math.ceil(PixelConverter.fromPointToPixel(visualSettings.labels.font.fontSize.value)) / BulletChart.LabelHeightRatio;
+
+        bulletModel.verticalExtraOffset = this.computeVerticalExtraOffset(isVerticalOrientation, visualSettings, bulletModel.labelHeightTop);
+
+        const measureUnitExtraHeight = visualSettings.axis.measureUnits.value
+            ? bulletModel.labelHeight / 2 + Math.ceil(PixelConverter.fromPointToPixel(visualSettings.axis.unitsFont.fontSize.value))
+            : 0;
+        const minSpaceForBar = visualSettings.general.barSize.value + measureUnitExtraHeight + BulletChart.MeasureUnitVerticalShift;
+        bulletModel.spaceRequiredForBarHorizontally = Math.max(
+            visualSettings.general.barSize.value + this.SpaceBetweenBarsHorizontally,
+            minSpaceForBar
+        );
 
         let legendWidth: number = 0;
         switch (LegendPosition[this.visualSettings.legend.position.value.value]) {
@@ -764,7 +778,7 @@ export class BulletChart implements IVisual {
         const topAndBottomVerticalMargin: number = BulletChart.YMarginVertical * 2;
 
         bulletModel.viewportLength = Math.max(0, (isVerticalOrientation
-            ? (viewPortHeight - bulletModel.labelHeightTop - BulletChart.SubtitleMargin - BulletChart.verticalHeightOffset - topAndBottomVerticalMargin)
+            ? (viewPortHeight - bulletModel.labelHeightTop - BulletChart.SubtitleMargin - bulletModel.verticalExtraOffset - BulletChart.VerticalViewportReserve - topAndBottomVerticalMargin)
             : (viewPortWidth - labelsWidth - BulletChart.XMarginHorizontalLeft - BulletChart.XMarginHorizontalRight - legendWidth)) - BulletChart.ScrollBarSize);
         bulletModel.hasHighlights = !!(categorical.Value.values.length > BulletChart.zeroValue && categorical.Value.highlights);
 
@@ -1143,6 +1157,8 @@ export class BulletChart implements IVisual {
             // Render legend first, so we can compute legend width and then adjust visual size
             this.renderLegend(renderedColors);
 
+            this.baselineDelta = TextMeasurementHelper.estimateSvgTextBaselineDelta(BulletChart.getTextProperties(BulletChart.oneString, this.visualSettings.labels.font.fontSize.value));
+
             const data: BulletChartModel = this.CONVERTER({ dataView, options, categorical, categoricalValues });
 
             this.clearViewport();
@@ -1153,7 +1169,6 @@ export class BulletChart implements IVisual {
             this.data = data;
             this.visualSettings.populateCategoryColors(data.bars);
 
-            this.baselineDelta = TextMeasurementHelper.estimateSvgTextBaselineDelta(BulletChart.getTextProperties(BulletChart.oneString, this.data.settings.labels.font.fontSize.value));
 
             this.bulletBody
                 .style("height", PixelConverter.toString(this.layout.viewportIn.height))
@@ -1238,8 +1253,8 @@ export class BulletChart implements IVisual {
 
     private calculateLabelHeight(barData: BarData, bar?: BarRect, reversed?: boolean) {
         return BulletChart.YMarginVertical + (reversed
-                ? BulletChart.labelHeightReversedPadding
-                : barData.y + this.data.labelHeightTop + BulletChart.BarMargin + BulletChart.SubtitleMargin)
+                ? BulletChart.ReversedLabelPadding
+                : barData.y + this.data.labelHeightTop + BulletChart.BarMargin + BulletChart.SubtitleMargin + this.data.verticalExtraOffset)
             + (bar ? bar.end : 0);
     }
 
@@ -1399,7 +1414,8 @@ export class BulletChart implements IVisual {
             .attr(SubSelectableObjectNameAttribute, (d: BarRect) => d.type)
             .attr(SubSelectableDisplayNameAttribute, (d: BarRect) => d.type)
             .style("fill", this.getCategoryColorByCondition(model, bars))
-            .style("stroke", "none") // Remove the regular stroke
+            .style("stroke", this.colorHelper.isHighContrast ? this.colorHelper.getHighContrastColor("foreground", "#000000") : "none")
+            .style("stroke-width", this.colorHelper.isHighContrast ? 1 : 0)
             .each((d: BarRect, i, nodes) => {
                 this.addLineToCategoryColor(nodes[i], d, model, true);
             });
@@ -1447,7 +1463,15 @@ export class BulletChart implements IVisual {
                         return BulletChart.XMarginHorizontalLeft + BulletChart.XMarginHorizontalRight + model.viewportLength + BulletChart.SubtitleMargin;
                     return d.x - BulletChart.SubtitleMargin;
                 }))
-                .attr("y", ((d: BarData) => d.y + this.data.labelHeight / 2 + BulletChart.measureUnitShift + this.BarSize / 2))
+                .attr("y", ((d: BarData) => {
+                    const underlinePadding = this.getUnderlinePadding(model.settings);
+                    const measureUnitFontHeight = Math.ceil(PixelConverter.fromPointToPixel(model.settings.axis.unitsFont.fontSize.value));
+                    const shift = model.settings.labels.show.value
+                        ? this.baselineDelta + measureUnitFontHeight * 0.75 + 2
+                        : BulletChart.MeasureUnitVerticalShift;
+                    const labelBaselineOffset = model.settings.labels.show.value ? this.baselineDelta : 0;
+                    return d.y + labelBaselineOffset + shift + underlinePadding + this.BarSize / 2;
+                }))
                 .attr("fill", model.settings.axis.unitsColor.value.value)
                 .attr("font-family", model.settings.axis.unitsFont.fontFamily.value)
                 .attr("font-size", PixelConverter.fromPoint(model.settings.axis.unitsFont.fontSize.value))
@@ -1564,7 +1588,7 @@ export class BulletChart implements IVisual {
                 .selectAll("g.axis > .tick text")
                 .call(
                     AxisHelper.LabelLayoutStrategy.clip,
-                    BulletChart.XMarginVertical - BulletChart.xAxisVerticalShift,
+                    BulletChart.XMarginVertical - BulletChart.VerticalAxisClipPadding,
                     TextMeasurementService.svgEllipsis
                 );
         }
@@ -1605,7 +1629,7 @@ export class BulletChart implements IVisual {
                     textSelection
                         .append("tspan")
                         .attr("x", (d: BarData) => d.x)
-                        .attr("dy", this.data.labelHeightTop + 7) // Add a little space between the category label and the completion percent
+                        .attr("dy", this.data.labelHeightTop + BulletChart.CompletionPercentLineSpacing)
                         .text((d: BarData) => {
                             const categoryValue = model.targetValues[d.barIndex].categoryValue;
                             const targetValue = model.targetValues[d.barIndex].targetValueUnscaled;
@@ -1625,6 +1649,39 @@ export class BulletChart implements IVisual {
         }
 
         return 'N/A';
+    }
+
+    /**
+     * Computes combined vertical extra offset (measure units + completion percent)
+     * used to reserve space above bars in vertical orientation.
+     */
+    private computeVerticalExtraOffset(
+        isVerticalOrientation: boolean,
+        settings: BulletChartSettingsModel,
+        labelHeightTop: number,
+    ): number {
+        if (!isVerticalOrientation) {
+            return 0;
+        }
+
+        let offset = 0;
+
+        if (settings.axis.measureUnits.value) {
+            const underlinePad = this.getUnderlinePadding(settings);
+            offset += this.baselineDelta + underlinePad;
+        }
+
+        if (settings.labels.show.value && settings.general.showCompletionPercent.value) {
+            offset += labelHeightTop + BulletChart.CompletionPercentLineSpacing;
+        }
+
+        return offset;
+    }
+
+    private getUnderlinePadding(settings: BulletChartSettingsModel): number {
+        return settings.labels.show.value && settings.labels.font.underline.value
+            ? BulletChart.UnderlineExtraPadding
+            : 0;
     }
 
     private renderAxisVertically(bar: BarData, reversed: boolean, axisColor: string, isMainAxis: boolean) {
@@ -1737,7 +1794,7 @@ export class BulletChart implements IVisual {
         const opacity = this.getGridOpacity();
         const lineStyle = this.getGridStrokeStyleArray();
         const width = this.settings.syncAxis.width.value ?? 1;
-        const ticks = mainBar.xAxisProperties.values as number[];
+        const ticks = (mainBar.xAxisProperties.axis.tickValues() ?? mainBar.scale.ticks()) as number[];
         const className = isVertical ? "main-gridlines-v" : "main-gridlines-h";
 
         const g = this.bulletGraphicsContext
@@ -1813,7 +1870,8 @@ export class BulletChart implements IVisual {
             .classed(HtmlSubSelectableClass, this.formatMode)
             .attr(SubSelectableObjectNameAttribute, (d: BarRect) => d.type)
             .attr(SubSelectableDisplayNameAttribute, (d: BarRect) => d.type)
-            .style("stroke", "none") // Remove the regular stroke
+            .style("stroke", this.colorHelper.isHighContrast ? this.colorHelper.getHighContrastColor("foreground", "#000000") : "none")
+            .style("stroke-width", this.colorHelper.isHighContrast ? 1 : 0)
             .each((d: BarRect, i, nodes) => {
                 this.addLineToCategoryColor(nodes[i], d, model, false);
             });
@@ -1848,7 +1906,7 @@ export class BulletChart implements IVisual {
             (d: TargetValue) => bars[d.barIndex].x + this.BarSize / 2,
             (d: TargetValue) => this.calculateLabelHeight(bars[d.barIndex], null, reversed) + d.value2);
 
-        const labelsStartPos: number = BulletChart.YMarginVertical + (reversed ? model.viewportLength + 15 : 0) + this.data.labelHeightTop;
+        const labelsStartPos: number = BulletChart.YMarginVertical + (reversed ? model.viewportLength + BulletChart.MainAxisSpacing : 0) + this.data.labelHeightTop;
         this.drawAxisAndLabelsForVerticalOrientation(model, reversed, labelsStartPos);
         const measureUnitsText: string = TextMeasurementService.getTailoredTextOrDefault(
             BulletChart.getTextProperties(model.settings.axis.measureUnits.value, model.settings.axis.unitsFont.fontSize.value),
@@ -1861,7 +1919,15 @@ export class BulletChart implements IVisual {
                 .classed(BulletChart.MeasureUnitsSelector.className, true)
                 .attr("x", ((d: BarData) => d.x + this.BarSize))
                 .attr("y", () => {
-                    return labelsStartPos + BulletChart.SubtitleMargin + BulletChart.measureUnitShift;
+                    const underlinePadding = this.getUnderlinePadding(model.settings);
+                    const measureUnitFontHeight = Math.ceil(PixelConverter.fromPointToPixel(model.settings.axis.unitsFont.fontSize.value));
+                    const shift = model.settings.labels.show.value
+                        ? this.baselineDelta + measureUnitFontHeight * 0.75 + 2
+                        : BulletChart.MeasureUnitVerticalShift;
+                    const completionPercentOffset = model.settings.labels.show.value && this.settings.general.showCompletionPercent.value
+                        ? this.data.labelHeightTop + BulletChart.CompletionPercentVerticalLineSpacing
+                        : 0;
+                    return labelsStartPos + shift + underlinePadding + completionPercentOffset;
                 })
                 .attr("fill", model.settings.axis.unitsColor.value.value)
                 .attr("font-family", model.settings.axis.unitsFont.fontFamily.value)
@@ -1975,16 +2041,7 @@ export class BulletChart implements IVisual {
         }
 
         if (!this.visualSettings.syncAxis.syncAxis.value && this.visualSettings.syncAxis.showMainAxis.value) {
-            this.hostService.persistProperties({
-                merge: [{
-                    objectName: 'syncAxis',
-                    selector: null,
-                    properties: {
-                        syncAxis: false,
-                        showMainAxis: false
-                    }
-                }]
-            });
+            this.visualSettings.syncAxis.showMainAxis.value = false;
         }
 
         return this.formattingSettingsService.buildFormattingModel(this.visualSettings);
