@@ -1820,7 +1820,7 @@ export class BulletChart implements IVisual {
         const opacity = this.getGridOpacity();
         const lineStyle = this.getGridStrokeStyleArray();
         const width = this.settings.syncAxis.width.value ?? 1;
-        const ticks = mainBar.xAxisProperties.axis.tickValues() as number[];
+        const ticks = (mainBar.xAxisProperties.axis.tickValues() as number[]) ?? [];
         const className = isVertical ? "main-gridlines-v" : "main-gridlines-h";
 
         const g = this.bulletGraphicsContext
