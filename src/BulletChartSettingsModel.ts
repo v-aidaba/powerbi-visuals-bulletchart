@@ -749,7 +749,7 @@ class SyncAxisCard extends CompositeCard {
         name: "transparency",
         displayName: "transparency",
         displayNameKey: "Visual_Transparency",
-        value: 0,
+        value: 1,
         options: {
             minValue: { value: 0, type: ValidatorType.Min },
             maxValue: { value: 100, type: ValidatorType.Max },
